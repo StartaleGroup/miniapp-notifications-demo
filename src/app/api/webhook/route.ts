@@ -3,85 +3,121 @@ import {
   parseWebhookEvent,
   verifyAppKeyWithNeynar,
 } from "@farcaster/miniapp-node";
-import { NextRequest } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import {
   deleteUserNotificationDetails,
   setUserNotificationDetails,
 } from "~/lib/kv";
 import { sendNotification } from "~/lib/notification-service";
 
+// Allow CORS from sandbox
+export async function OPTIONS(request: NextRequest) {
+  return new NextResponse(null, {
+    status: 200,
+    headers: {
+      "Access-Control-Allow-Origin": "*",
+      "Access-Control-Allow-Methods": "POST, OPTIONS",
+      "Access-Control-Allow-Headers": "Content-Type, x-api-key",
+    },
+  });
+}
+
 export async function POST(request: NextRequest) {
+  const corsHeaders = {
+    "Access-Control-Allow-Origin": "*",
+    "Access-Control-Allow-Methods": "POST, OPTIONS",
+    "Access-Control-Allow-Headers": "Content-Type, x-api-key",
+  };
+
+  const response = new NextResponse(null);
   const requestJson = await request.json();
   console.log("[webhook] Received event:", JSON.stringify(requestJson, null, 2));
 
-  let data;
-  try {
-    data = await parseWebhookEvent(requestJson, verifyAppKeyWithNeynar);
-    console.log("[webhook] Parsed event data:", JSON.stringify(data, null, 2));
-    console.log("[webhook] Available identifiers - fid:", data.fid, "address:", (data as any).address);
-  } catch (e: unknown) {
-    const error = e as ParseWebhookEvent.ErrorType;
+  let address: string | undefined;
+  let event: any;
 
-    switch (error.name) {
-      case "VerifyJsonFarcasterSignature.InvalidDataError":
-      case "VerifyJsonFarcasterSignature.InvalidEventDataError":
-        // The request data is invalid
-        return Response.json(
-          { success: false, error: error.message },
-          { status: 400 }
-        );
-      case "VerifyJsonFarcasterSignature.InvalidAppKeyError":
-        // The app key is invalid
-        return Response.json(
-          { success: false, error: error.message },
-          { status: 401 }
-        );
-      case "VerifyJsonFarcasterSignature.VerifyAppKeyError":
-        // Internal error verifying the app key (caller may want to try again)
-        return Response.json(
-          { success: false, error: error.message },
-          { status: 500 }
-        );
+  // Check if this is a sandbox webhook (with userAddress) or standard Farcaster webhook
+  const sandboxPayload = requestJson as any;
+  if (sandboxPayload.userAddress && sandboxPayload.event && typeof sandboxPayload.event === "string") {
+    // Sandbox webhook format (from miniapp-sandbox)
+    address = sandboxPayload.userAddress;
+    event = {
+      event: sandboxPayload.event,
+      notificationDetails: sandboxPayload.notificationDetails,
+    };
+  } else {
+    // Standard Farcaster webhook format - try to parse and verify
+    let data;
+    try {
+      data = await parseWebhookEvent(requestJson, verifyAppKeyWithNeynar);
+      console.log("[webhook] Parsed event data:", JSON.stringify(data, null, 2));
+      // Note: Standard Farcaster webhooks use FID, but StartaleApp uses address
+      // For now, we don't have address from standard format
+      event = data.event;
+    } catch (e: unknown) {
+      const error = e as ParseWebhookEvent.ErrorType;
+      console.error("[webhook] Parse error:", error.name);
+
+      switch (error.name) {
+        case "VerifyJsonFarcasterSignature.InvalidDataError":
+        case "VerifyJsonFarcasterSignature.InvalidEventDataError":
+          return Response.json(
+            { success: false, error: error.message },
+            { status: 400, headers: corsHeaders }
+          );
+        case "VerifyJsonFarcasterSignature.InvalidAppKeyError":
+          return Response.json(
+            { success: false, error: error.message },
+            { status: 401, headers: corsHeaders }
+          );
+        case "VerifyJsonFarcasterSignature.VerifyAppKeyError":
+          return Response.json(
+            { success: false, error: error.message },
+            { status: 500, headers: corsHeaders }
+          );
+      }
     }
   }
 
-  const fid = data.fid;
-  const event = data.event;
+  if (!address || !event) {
+    return Response.json(
+      { success: false, error: "Missing address or event" },
+      { status: 400, headers: corsHeaders }
+    );
+  }
 
-  console.log(`[webhook] Processing event for FID ${fid}:`, event.event);
+  console.log(`[webhook] Processing event for address ${address}:`, event.event);
 
   switch (event.event) {
     case "miniapp_added":
       if (event.notificationDetails) {
-        await setUserNotificationDetails(fid, event.notificationDetails);
-        await sendNotification(
-          fid,
-          "Welcome to StartaleApp",
-          "Mini app is now added to your client"
-        );
+        await setUserNotificationDetails(address, event.notificationDetails);
+        console.log(`[webhook] Stored notification details for ${address}`);
       } else {
-        await deleteUserNotificationDetails(fid);
+        await deleteUserNotificationDetails(address);
       }
-
       break;
+
     case "miniapp_removed":
-      await deleteUserNotificationDetails(fid);
-
+      await deleteUserNotificationDetails(address);
+      console.log(`[webhook] Deleted notification details for ${address}`);
       break;
+
     case "notifications_enabled":
-      await setUserNotificationDetails(fid, event.notificationDetails);
-      await sendNotification(
-        fid,
-        "Ding ding ding",
-        "Notifications are now enabled"
-      );
-
+      if (event.notificationDetails) {
+        await setUserNotificationDetails(address, event.notificationDetails);
+        console.log(`[webhook] Enabled notifications for ${address}`);
+      }
       break;
+
     case "notifications_disabled":
-      await deleteUserNotificationDetails(fid);
-
+      await deleteUserNotificationDetails(address);
+      console.log(`[webhook] Disabled notifications for ${address}`);
       break;
+
+    default:
+      console.log(`[webhook] Unknown event type: ${event.event}`);
   }
 
-  return Response.json({ success: true });
+  return Response.json({ success: true }, { headers: corsHeaders });
 }

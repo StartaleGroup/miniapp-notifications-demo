@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useCallback, useState } from "react";
-import { Input } from "../components/ui/input";
 import sdk, {
   AddMiniApp,
   MiniAppNotificationDetails,
@@ -24,7 +23,6 @@ import { truncateAddress } from "~/lib/truncateAddress";
 import { soneium } from "wagmi/chains";
 import { BaseError, UserRejectedRequestError } from "viem";
 import { createStore } from "mipd";
-import { Label } from "~/components/ui/label";
 
 
 // Handles JSON stringify with `BigInt` values
@@ -47,9 +45,20 @@ export default function Demo(
     useState<MiniAppNotificationDetails | null>(null);
 
   const [lastEvent, setLastEvent] = useState("");
+  const [eventLog, setEventLog] = useState<Array<{ event: string; timestamp: string }>>([]);
 
   const [addFrameResult, setAddFrameResult] = useState("");
   const [sendNotificationResult, setSendNotificationResult] = useState("");
+
+  // Helper to log SDK events
+  const logEvent = useCallback((eventName: string) => {
+    const timestamp = new Date().toISOString().split('T')[1].split('.')[0];
+    setLastEvent(eventName);
+    setEventLog((prev) => [
+      { event: eventName, timestamp },
+      ...prev.slice(0, 9), // Keep last 10 events
+    ]);
+  }, []);
 
   // StartaleApp-specific context
   const [starPoints, setStarPoints] = useState<number | null>(null);
@@ -57,12 +66,38 @@ export default function Demo(
   const [username, setUsername] = useState<string>("");
   const [pfpUrl, setPfpUrl] = useState<string>("");
 
+  // Get wallet address early (needed for token retrieval)
+  const { address, isConnected } = useAccount();
+  const chainId = useChainId();
+
   useEffect(() => {
     setNotificationDetails(context?.client.notificationDetails ?? null);
   }, [context]);
 
-  const { address, isConnected } = useAccount();
-  const chainId = useChainId();
+  // Retrieve stored notification token when address becomes available
+  useEffect(() => {
+    if (!context || !context.client.added || !address) {
+      return;
+    }
+
+    const retrieveStoredToken = async () => {
+      try {
+        const response = await fetch("/api/get-notification-details", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ address }),
+        });
+        const data = await response.json();
+        if (data.notificationDetails) {
+          setNotificationDetails(data.notificationDetails);
+        }
+      } catch (error) {
+        console.error("[Demo] Failed to retrieve notification details:", error);
+      }
+    };
+
+    retrieveStoredToken();
+  }, [context, address]);
 
   const {
     signTypedData,
@@ -79,6 +114,23 @@ export default function Demo(
       const context = await sdk.context;
       setContext(context);
       setAdded(context.client.added);
+
+      // If already added, retrieve stored notification details from server using wallet address
+      if (context.client.added && address) {
+        try {
+          const response = await fetch("/api/get-notification-details", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ address }),
+          });
+          const data = await response.json();
+          if (data.notificationDetails) {
+            setNotificationDetails(data.notificationDetails);
+          }
+        } catch (error) {
+          console.error("[Demo] Failed to retrieve notification details:", error);
+        }
+      }
 
       // Read StartaleApp-specific context
       const ctx = context as {
@@ -100,9 +152,7 @@ export default function Demo(
 
       sdk.on("miniAppAdded", ({ notificationDetails }) => {
         console.log("[SDK] miniAppAdded event, notificationDetails:", notificationDetails);
-        setLastEvent(
-          `miniAppAdded${!!notificationDetails ? ", notifications enabled" : ""}`
-        );
+        logEvent(`miniAppAdded${!!notificationDetails ? " (notifications enabled)" : ""}`);
 
         setAdded(true);
         if (notificationDetails) {
@@ -112,26 +162,30 @@ export default function Demo(
       });
 
       sdk.on("miniAppAddRejected", ({ reason }) => {
-        setLastEvent(`miniAppAddRejected, reason ${reason}`);
+        logEvent(`miniAppAddRejected (${reason})`);
       });
 
       sdk.on("miniAppRemoved", () => {
-        setLastEvent("miniAppRemoved");
+        logEvent("miniAppRemoved");
         setAdded(false);
         setNotificationDetails(null);
       });
 
       sdk.on("notificationsEnabled", ({ notificationDetails }) => {
-        setLastEvent("notificationsEnabled");
+        logEvent("notificationsEnabled");
         setNotificationDetails(notificationDetails);
       });
       sdk.on("notificationsDisabled", () => {
-        setLastEvent("notificationsDisabled");
+        logEvent("notificationsDisabled");
         setNotificationDetails(null);
       });
 
       sdk.on("primaryButtonClicked", () => {
-        console.log("primaryButtonClicked");
+        logEvent("primaryButtonClicked");
+      });
+
+      sdk.on("backNavigationTriggered", () => {
+        logEvent("backNavigationTriggered");
       });
 
       const ethereumProvider = await sdk.wallet.getEthereumProvider();
@@ -188,13 +242,11 @@ export default function Demo(
     } catch (error) {
       if (error instanceof AddMiniApp.RejectedByUser) {
         setAddFrameResult(`Not added: ${error.message}`);
-      }
-
-      if (error instanceof AddMiniApp.InvalidDomainManifest) {
+      } else if (error instanceof AddMiniApp.InvalidDomainManifest) {
         setAddFrameResult(`Not added: ${error.message}`);
+      } else {
+        setAddFrameResult(`Error: ${error}`);
       }
-
-      setAddFrameResult(`Error: ${error}`);
     }
   }, []);
 
@@ -318,15 +370,6 @@ export default function Demo(
           <div className="mb-4">
             <div className="p-2 bg-gray-100 dark:bg-gray-800 rounded-lg my-2">
               <pre className="font-mono text-xs whitespace-pre-wrap break-words max-w-[260px] overflow-x-">
-                sdk.experimental.signManifest
-              </pre>
-            </div>
-            <SignManifest />
-          </div>
-
-          <div className="mb-4">
-            <div className="p-2 bg-gray-100 dark:bg-gray-800 rounded-lg my-2">
-              <pre className="font-mono text-xs whitespace-pre-wrap break-words max-w-[260px] overflow-x-">
                 sdk.actions.openUrl
               </pre>
             </div>
@@ -344,12 +387,25 @@ export default function Demo(
         </div>
 
         <div className="mb-4">
-          <h2 className="font-2xl font-bold">Last event</h2>
+          <h2 className="font-2xl font-bold">Events</h2>
 
-          <div className="p-4 mt-2 bg-gray-100 dark:bg-gray-800 rounded-lg">
-            <pre className="font-mono text-xs whitespace-pre-wrap break-words max-w-[260px] overflow-x-">
-              {lastEvent || "none"}
-            </pre>
+          <div className="p-3 mt-2 bg-gray-100 dark:bg-gray-800 rounded-lg">
+            {eventLog.length > 0 ? (
+              <div className="space-y-2 text-xs font-mono">
+                {eventLog.map((entry, idx) => (
+                  <div key={idx}>
+                    <div className="text-gray-600 dark:text-gray-400">
+                      {entry.timestamp}
+                    </div>
+                    <div className="text-gray-800 dark:text-gray-200">
+                      {entry.event}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <pre className="font-mono text-xs text-gray-500">—</pre>
+            )}
           </div>
         </div>
 
@@ -557,73 +613,6 @@ function SendEth() {
       )}
     </>
   );
-}
-
-function SignManifest() {
-  const [domain, setDomain] = useState('www.microsoft.com')
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const [result, setResult] = useState<unknown>(null)
-
-  const handleSignManifest = async () => {
-    setLoading(true)
-    setError(null)
-    setResult(null)
-
-    try {
-      const manifest = await sdk.experimental.signManifest({ domain })
-      setResult(manifest)
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'An error occurred')
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  return (
-    <div className="space-y-4">
-      <div>
-        <Label
-          className="text-xs font-semibold text-gray-500 dark:text-gray-300 mb-1"
-          htmlFor="domain-input"
-        >
-          Domain
-        </Label>
-        <Input
-          id="domain-input"
-          type="text"
-          value={domain}
-          onChange={(e) => setDomain(e.target.value)}
-          className="w-full mb-2"
-          placeholder="Enter domain (e.g., http://www.microsoft.com)"
-        />
-      </div>
-
-      <Button
-        onClick={handleSignManifest}
-        disabled={loading || !domain}
-        isLoading={loading}
-      >
-        {loading ? 'Signing...' : 'Sign Manifest'}
-      </Button>
-
-      {error && (
-        <div className="p-4 bg-red-50 border border-red-200 rounded-md">
-          <p className="text-red-600 font-medium">Error:</p>
-          <p className="text-red-500">{error}</p>
-        </div>
-      )}
-
-      {result !== null && result !== undefined && (
-        <div className="p-4 bg-gray-50 border border-gray-200 rounded-md">
-          <p className="font-medium mb-2">Signed Manifest:</p>
-          <pre className="bg-white p-3 rounded border border-gray-300 overflow-x-auto">
-            {safeJsonStringify(result)}
-          </pre>
-        </div>
-      )}
-    </div>
-  )
 }
 
 const renderError = (error: Error | null) => {
