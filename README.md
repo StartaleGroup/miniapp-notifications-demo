@@ -66,16 +66,14 @@ The app uses **direct Farcaster notification tokens** for sending push notificat
 - Tokens are stored in-memory (with `globalThis` persistence during hot reload)
 - Notifications are sent by posting the token to Farcaster's notification service
 
-### Alternative: Neynar API
-For production deployments, consider using the **Neynar API** instead:
-- Eliminates the need for token storage entirely
-- Neynar manages token lifecycle internally
-- Simpler architecture and fewer hot reload issues
-- Requires `NEYNAR_API_KEY` environment variable
+### Why Direct Farcaster Tokens (Not Neynar)
+The direct Farcaster notification approach is the right choice for StartaleApp because:
+- StartaleApp users are identified by **wallet address only** — they are not necessarily Farcaster users
+- Neynar requires a Farcaster ID (FID), which doesn't exist for StartaleApp-only users
+- The notification token obtained from the SDK works for any user with a wallet, regardless of Farcaster registration
+- No address-to-FID mapping possible for non-Farcaster users
 
-To switch to Neynar, see the commented code in `src/lib/notification-service.ts` for implementation details.
-
-**Note for StartaleApp:** Neynar's standard endpoint uses Farcaster ID (FID), but StartaleApp uses wallet addresses. You may need to map addresses to FIDs or check if Neynar has address-based endpoints.
+(Neynar would only be suitable if you were building for Farcaster's Warpcast client, where users have FIDs.)
 
 ## Wallet
 
