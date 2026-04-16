@@ -113,14 +113,14 @@ export async function sendNotificationDirect(
  * Note: With Neynar, token storage (kv.ts) is no longer needed.
  */
 export async function sendNotification(
-  fid: number,
+  address: string,
   title: string,
   body: string
 ): Promise<NotificationResult> {
   // Get stored notification token for this user
-  const notificationDetails = await getUserNotificationDetails(fid);
+  const notificationDetails = await getUserNotificationDetails(address);
   if (!notificationDetails) {
-    console.log(`[sendNotification] No notification details for FID ${fid}`);
+    console.log(`[sendNotification] No notification details for address ${address}`);
     return { state: "no_token" };
   }
 
@@ -134,7 +134,7 @@ export async function sendNotification(
   };
 
   console.log("[sendNotification] Sending notification:", {
-    fid,
+    address,
     url: notificationDetails.url,
     payload,
   });

@@ -38,10 +38,10 @@ export async function POST(request: NextRequest) {
   const sandboxPayload = requestJson as Record<string, unknown>;
   if (sandboxPayload.userAddress && sandboxPayload.event && typeof sandboxPayload.event === "string") {
     // Sandbox webhook format (from miniapp-sandbox)
-    address = sandboxPayload.userAddress;
+    address = sandboxPayload.userAddress as string;
     event = {
-      event: sandboxPayload.event,
-      notificationDetails: sandboxPayload.notificationDetails,
+      event: sandboxPayload.event as string,
+      notificationDetails: sandboxPayload.notificationDetails as { url: string; token: string } | undefined,
     };
   } else {
     // Standard Farcaster webhook format - try to parse and verify
