@@ -132,12 +132,12 @@ export default function Demo(
       }
 
       sdk.on("miniAppAdded", ({ notificationDetails }) => {
-        console.log("[SDK] miniAppAdded event, notificationDetails:", notificationDetails);
+        console.log("[DEMO-MINIAPP] miniAppAdded event, notificationDetails:", notificationDetails);
         logEvent(`miniAppAdded${!!notificationDetails ? " (notifications enabled)" : ""}`);
 
         setAdded(true);
         if (notificationDetails) {
-          console.log("[SDK] Setting notification details:", notificationDetails);
+          console.log("[DEMO-MINIAPP] Setting notification details:", notificationDetails);
           setNotificationDetails(notificationDetails);
           if (address) writeStoredDetails(address, notificationDetails);
         }
@@ -175,10 +175,10 @@ export default function Demo(
 
       const ethereumProvider = await sdk.wallet.getEthereumProvider();
       ethereumProvider?.on("chainChanged", (chainId) => {
-        console.log("[ethereumProvider] chainChanged", chainId)
+        console.log("[DEMO-MINIAPP-ethereumProvider] chainChanged", chainId)
       })
       ethereumProvider?.on("connect", (connectInfo) => {
-        console.log("[ethereumProvider] connect", connectInfo);
+        console.log("[DEMO-MINIAPP-ethereumProvider] connect", connectInfo);
       });
 
       sdk.actions.ready({});
@@ -188,7 +188,7 @@ export default function Demo(
 
       // Subscribe to the MIPD Store.
       store.subscribe((providerDetails) => {
-        console.log("PROVIDER DETAILS", providerDetails);
+        console.log("[DEMO-MINIAPP] provider details", providerDetails);
       });
     };
     if (sdk && !isSDKLoaded) {
@@ -213,10 +213,10 @@ export default function Demo(
       setNotificationDetails(null);
 
       const result = await sdk.actions.addMiniApp();
-      console.log("[addFrame] Result from sdk.actions.addMiniApp():", result);
+      console.log("[DEMO-MINIAPP-addFrame] Result from sdk.actions.addMiniApp():", result);
 
       if (result.notificationDetails) {
-        console.log("[addFrame] Got notification details:", result.notificationDetails);
+        console.log("[DEMO-MINIAPP-addFrame] Got notification details:", result.notificationDetails);
         setNotificationDetails(result.notificationDetails);
         if (address) writeStoredDetails(address, result.notificationDetails);
       }

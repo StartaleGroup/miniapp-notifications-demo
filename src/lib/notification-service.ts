@@ -4,18 +4,6 @@ import {
   sendNotificationResponseSchema,
 } from "@farcaster/miniapp-sdk";
 
-/**
- * Get the app URL for notifications
- * Falls back to localhost:3000 for local development
- */
-function getAppUrl(): string {
-  if (process.env.NEXT_PUBLIC_URL) {
-    return process.env.NEXT_PUBLIC_URL;
-  }
-  // Fallback for local development
-  return "http://localhost:3000";
-}
-
 export type NotificationResult =
   | { state: "success" }
   | { state: "no_token" }
@@ -29,18 +17,18 @@ export type NotificationResult =
 export async function sendNotificationDirect(
   notificationDetails: MiniAppNotificationDetails,
   title: string,
-  body: string
+  body: string,
+  targetUrl: string
 ): Promise<NotificationResult> {
-  const appUrl = getAppUrl();
   const payload = {
     notificationId: crypto.randomUUID(),
     title,
     body,
-    targetUrl: appUrl,
+    targetUrl,
     tokens: [notificationDetails.token],
   };
 
-  console.log("[sendNotificationDirect] Sending notification:", {
+  console.log("[DEMO-MINIAPP-sendNotificationDirect] Sending notification:", {
     url: notificationDetails.url,
     payload,
   });
@@ -55,7 +43,7 @@ export async function sendNotificationDirect(
     });
 
     const responseJson = await response.json();
-    console.log("[sendNotificationDirect] Response:", {
+    console.log("[DEMO-MINIAPP-sendNotificationDirect] Response:", {
       status: response.status,
       body: responseJson,
     });
@@ -65,23 +53,23 @@ export async function sendNotificationDirect(
         responseJson
       );
       if (responseBody.success === false) {
-        console.error("[sendNotificationDirect] Invalid response schema:", responseBody.error.errors);
+        console.error("[DEMO-MINIAPP-sendNotificationDirect] Invalid response schema:", responseBody.error.errors);
         return { state: "error", error: responseBody.error.errors };
       }
 
       if (responseBody.data.result.rateLimitedTokens.length) {
-        console.warn("[sendNotificationDirect] Rate limited tokens:", responseBody.data.result.rateLimitedTokens);
+        console.warn("[DEMO-MINIAPP-sendNotificationDirect] Rate limited tokens:", responseBody.data.result.rateLimitedTokens);
         return { state: "rate_limit" };
       }
 
-      console.log("[sendNotificationDirect] Notification sent successfully");
+      console.log("[DEMO-MINIAPP-sendNotificationDirect] Notification sent successfully");
       return { state: "success" };
     } else {
-      console.error("[sendNotificationDirect] HTTP error:", response.status, responseJson);
+      console.error("[DEMO-MINIAPP-sendNotificationDirect] HTTP error:", response.status, responseJson);
       return { state: "error", error: responseJson };
     }
   } catch (error) {
-    console.error("[sendNotificationDirect] Fetch error:", error);
+    console.error("[DEMO-MINIAPP-sendNotificationDirect] Fetch error:", error);
     return { state: "error", error };
   }
 }

@@ -25,7 +25,7 @@ export async function POST(request: NextRequest) {
   };
 
   const requestJson = await request.json();
-  console.log("[webhook] Received event:", JSON.stringify(requestJson, null, 2));
+  console.log("[DEMO-MINIAPP-webhook] Received event:", JSON.stringify(requestJson, null, 2));
 
   let address: string | undefined;
   let event: { event: string; notificationDetails?: { url: string; token: string } } | undefined;
@@ -44,13 +44,13 @@ export async function POST(request: NextRequest) {
     let data;
     try {
       data = await parseWebhookEvent(requestJson, verifyAppKeyWithNeynar);
-      console.log("[webhook] Parsed event data:", JSON.stringify(data, null, 2));
+      console.log("[DEMO-MINIAPP-webhook] Parsed event data:", JSON.stringify(data, null, 2));
       // Note: Standard Farcaster webhooks use FID, but StartaleApp uses address
       // For now, we don't have address from standard format
       event = data.event;
     } catch (e: unknown) {
       const error = e as ParseWebhookEvent.ErrorType;
-      console.error("[webhook] Parse error:", error.name);
+      console.error("[DEMO-MINIAPP-webhook] Parse error:", error.name);
 
       switch (error.name) {
         case "VerifyJsonFarcasterSignature.InvalidDataError":
@@ -80,7 +80,7 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  console.log(`[webhook] Acknowledged event for address ${address}:`, event.event);
+  console.log(`[DEMO-MINIAPP-webhook] Acknowledged event for address ${address}:`, event.event);
 
   return Response.json({ success: true }, { headers: corsHeaders });
 }

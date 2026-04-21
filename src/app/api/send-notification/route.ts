@@ -18,11 +18,19 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  console.log("[DEMO-MINIAPP] Sending notification", {
+    targetUrl: request.nextUrl.origin,
+    notificationUrl: requestBody.data.notificationDetails.url,
+  });
+
   const sendResult = await sendNotificationDirect(
     requestBody.data.notificationDetails,
     "Test notification",
-    "Sent at " + new Date().toISOString()
+    "Sent at " + new Date().toISOString(),
+    request.nextUrl.origin
   );
+
+  console.log("[DEMO-MINIAPP] Notification send result", sendResult);
 
   if (sendResult.state === "error") {
     return Response.json(
