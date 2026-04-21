@@ -39,6 +39,29 @@ export default function Demo(
   const [addFrameResult, setAddFrameResult] = useState("");
   const [sendNotificationResult, setSendNotificationResult] = useState("");
 
+  const storageKey = (addr: string) => `miniapp:notification-details:${addr.toLowerCase()}`;
+
+  const readStoredDetails = (addr: string): MiniAppNotificationDetails | null => {
+    try {
+      const raw = localStorage.getItem(storageKey(addr));
+      return raw ? (JSON.parse(raw) as MiniAppNotificationDetails) : null;
+    } catch {
+      return null;
+    }
+  };
+
+  const writeStoredDetails = (addr: string, details: MiniAppNotificationDetails | null) => {
+    try {
+      if (details) {
+        localStorage.setItem(storageKey(addr), JSON.stringify(details));
+      } else {
+        localStorage.removeItem(storageKey(addr));
+      }
+    } catch {
+      // localStorage may be unavailable (private mode, quota) — ignore.
+    }
+  };
+
   // Helper to log SDK events
   const logEvent = useCallback((eventName: string) => {
     const timestamp = new Date().toISOString().split('T')[1].split('.')[0];
@@ -59,32 +82,18 @@ export default function Demo(
   const chainId = useChainId();
 
   useEffect(() => {
-    setNotificationDetails(context?.client.notificationDetails ?? null);
-  }, [context]);
-
-  // Retrieve stored notification token when address becomes available
-  useEffect(() => {
-    if (!context || !context.client.added || !address) {
+    const fromContext = context?.client.notificationDetails ?? null;
+    if (fromContext) {
+      setNotificationDetails(fromContext);
       return;
     }
-
-    const retrieveStoredToken = async () => {
-      try {
-        const response = await fetch("/api/get-notification-details", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ address }),
-        });
-        const data = await response.json();
-        if (data.notificationDetails) {
-          setNotificationDetails(data.notificationDetails);
-        }
-      } catch (error) {
-        console.error("[Demo] Failed to retrieve notification details:", error);
+    if (address) {
+      const stored = readStoredDetails(address);
+      if (stored) {
+        setNotificationDetails(stored);
+        setAdded(true);
       }
-    };
-
-    retrieveStoredToken();
+    }
   }, [context, address]);
 
   const {
@@ -103,23 +112,6 @@ export default function Demo(
       const context = await sdk.context;
       setContext(context);
       setAdded(context.client.added);
-
-      // If already added, retrieve stored notification details from server using wallet address
-      if (context.client.added && address) {
-        try {
-          const response = await fetch("/api/get-notification-details", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ address }),
-          });
-          const data = await response.json();
-          if (data.notificationDetails) {
-            setNotificationDetails(data.notificationDetails);
-          }
-        } catch (error) {
-          console.error("[Demo] Failed to retrieve notification details:", error);
-        }
-      }
 
       // Read StartaleApp-specific context
       const ctx = context as {
@@ -147,6 +139,7 @@ export default function Demo(
         if (notificationDetails) {
           console.log("[SDK] Setting notification details:", notificationDetails);
           setNotificationDetails(notificationDetails);
+          if (address) writeStoredDetails(address, notificationDetails);
         }
       });
 
@@ -158,15 +151,18 @@ export default function Demo(
         logEvent("miniAppRemoved");
         setAdded(false);
         setNotificationDetails(null);
+        if (address) writeStoredDetails(address, null);
       });
 
       sdk.on("notificationsEnabled", ({ notificationDetails }) => {
         logEvent("notificationsEnabled");
         setNotificationDetails(notificationDetails);
+        if (address) writeStoredDetails(address, notificationDetails);
       });
       sdk.on("notificationsDisabled", () => {
         logEvent("notificationsDisabled");
         setNotificationDetails(null);
+        if (address) writeStoredDetails(address, null);
       });
 
       sdk.on("primaryButtonClicked", () => {
@@ -222,6 +218,7 @@ export default function Demo(
       if (result.notificationDetails) {
         console.log("[addFrame] Got notification details:", result.notificationDetails);
         setNotificationDetails(result.notificationDetails);
+        if (address) writeStoredDetails(address, result.notificationDetails);
       }
       setAddFrameResult(
         result.notificationDetails
@@ -237,7 +234,7 @@ export default function Demo(
         setAddFrameResult(`Error: ${error}`);
       }
     }
-  }, []);
+  }, [address]);
 
   const sendNotification = useCallback(async () => {
     setSendNotificationResult("");

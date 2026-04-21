@@ -4,10 +4,6 @@ import {
   verifyAppKeyWithNeynar,
 } from "@farcaster/miniapp-node";
 import { NextRequest, NextResponse } from "next/server";
-import {
-  deleteUserNotificationDetails,
-  setUserNotificationDetails,
-} from "~/lib/kv";
 
 // Allow CORS from sandbox
 export async function OPTIONS() {
@@ -84,38 +80,7 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  console.log(`[webhook] Processing event for address ${address}:`, event.event);
-
-  switch (event.event) {
-    case "miniapp_added":
-      if (event.notificationDetails) {
-        await setUserNotificationDetails(address, event.notificationDetails);
-        console.log(`[webhook] Stored notification details for ${address}`);
-      } else {
-        await deleteUserNotificationDetails(address);
-      }
-      break;
-
-    case "miniapp_removed":
-      await deleteUserNotificationDetails(address);
-      console.log(`[webhook] Deleted notification details for ${address}`);
-      break;
-
-    case "notifications_enabled":
-      if (event.notificationDetails) {
-        await setUserNotificationDetails(address, event.notificationDetails);
-        console.log(`[webhook] Enabled notifications for ${address}`);
-      }
-      break;
-
-    case "notifications_disabled":
-      await deleteUserNotificationDetails(address);
-      console.log(`[webhook] Disabled notifications for ${address}`);
-      break;
-
-    default:
-      console.log(`[webhook] Unknown event type: ${event.event}`);
-  }
+  console.log(`[webhook] Acknowledged event for address ${address}:`, event.event);
 
   return Response.json({ success: true }, { headers: corsHeaders });
 }
